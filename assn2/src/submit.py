@@ -1,6 +1,7 @@
 import numpy as np
 
 score = {}
+global secret_dict
 
 def similarities(word1, word2):
 	if len(word1)!=len(word2):
@@ -13,25 +14,25 @@ def similarities(word1, word2):
 	
 	return sim
 
-def create_score(words):
+def create_score():
 
-	for i,x in enumerate(words):
-		score[words[i]] = {}
-		for j in range(i,len(words)):
-			score[words[i]][words[j]] = similarities(words[i], words[j])
+	for i,x in enumerate(secret_dict):
+		score[secret_dict[i]] = {}
+		for j in range(i,len(secret_dict)):
+			score[secret_dict[i]][secret_dict[j]] = similarities(secret_dict[i], secret_dict[j])
 
 	return
 
-def give_query_idx(words, redu_word_idx):
+def give_query_idx(redu_word_idx):
 
 	my_score = []
 	for i in redu_word_idx:
 		scorei = 0
 		for j in redu_word_idx:
 			if i<j:
-				scorei += score[words[i]][words[j]]
+				scorei += score[secret_dict[i]][secret_dict[j]]
 			else:
-				scorei += score[words[j]][words[i]]
+				scorei += score[secret_dict[j]][secret_dict[i]]
 		my_score.append(scorei)
 
 	# return redu_word_idx[my_score.index(max(my_score))]
@@ -46,11 +47,18 @@ def give_query_idx(words, redu_word_idx):
 	idx = np.random.randint( 0, len(max_list))
 
 	return redu_word_idx[max_list[idx]]
+
+def assign_secret_dict(words):
+	global secret_dict 
+	secret_dict = words
+
+	return 
 	
 def my_fit( words, verbose = False ):
-	create_score( words )
+	assign_secret_dict(words)
+	create_score()
 	dt = Tree( min_leaf_size = 1, max_depth = 15 )
-	dt.fit( words, verbose )
+	dt.fit( verbose )
 	return dt
 
 
@@ -61,14 +69,14 @@ class Tree:
 		self.min_leaf_size = min_leaf_size
 		self.max_depth = max_depth
 	
-	def fit( self, words, verbose = False ):
-		self.words = words
+	def fit( self, verbose = False ):
+		self.words = secret_dict
 		self.root = Node( depth = 0, parent = None )
 		if verbose:
 			print( "root" )
 			print( "└───", end = '' )
 		# The root is trained with all the words
-		self.root.fit( all_words = self.words, my_words_idx = np.arange( len( self.words ) ), min_leaf_size = self.min_leaf_size, max_depth = self.max_depth, verbose = verbose )
+		self.root.fit( my_words_idx = np.arange( len( self.words ) ), min_leaf_size = self.min_leaf_size, max_depth = self.max_depth, verbose = verbose )
 
 
 class Node:
@@ -80,7 +88,6 @@ class Node:
 	def __init__( self, depth, parent ):
 		self.depth = depth
 		self.parent = parent
-		self.all_words = None
 		self.my_words_idx = None
 		self.children = {}
 		self.is_leaf = True
@@ -128,20 +135,20 @@ class Node:
 	
 	# Dummy node splitting action -- use a random word as query
 	# Note that any word in the dictionary can be the query
-	def process_node( self, all_words, my_words_idx, verbose ):
+	def process_node( self, my_words_idx, verbose ):
 		# For the root we do not ask any query -- Melbot simply gives us the length of the secret word
-		if len( my_words_idx ) == len( all_words ):
+		if self.parent == None:
 			query_idx = -1
 			query = ""
 		else:
-			query_idx = give_query_idx(all_words, my_words_idx)
+			query_idx = give_query_idx(my_words_idx)
 			# query_idx = my_words_idx[np.random.randint( 0, len( my_words_idx ) )]
-			query = all_words[ query_idx ]
+			query = secret_dict[ query_idx ]
 		
 		split_dict = {}
 		
 		for idx in my_words_idx:
-			mask = self.reveal( all_words[ idx ], query )
+			mask = self.reveal( secret_dict[ idx ], query )
 			if mask not in split_dict:
 				split_dict[ mask ] = []
 			
@@ -152,8 +159,7 @@ class Node:
 		
 		return ( query_idx, split_dict )
 	
-	def fit( self, all_words, my_words_idx, min_leaf_size, max_depth, fmt_str = "    ", verbose = False ):
-		self.all_words = all_words
+	def fit( self, my_words_idx, min_leaf_size, max_depth, fmt_str = "    ", verbose = False ):
 		self.my_words_idx = my_words_idx
 		
 		# If the node is too small or too deep, make it a leaf
@@ -165,10 +171,10 @@ class Node:
 				print( '█' )
 		else:
 			self.is_leaf = False
-			( self.query_idx, split_dict ) = self.process_node( self.all_words, self.my_words_idx, verbose )
+			( self.query_idx, split_dict ) = self.process_node( self.my_words_idx, verbose )
 			
 			if verbose:
-				print( all_words[ self.query_idx ] )
+				print( secret_dict[ self.query_idx ] )
 			
 			for ( i, ( response, split ) ) in enumerate( split_dict.items() ):
 				if verbose:
@@ -183,4 +189,4 @@ class Node:
 				self.children[ response ] = Node( depth = self.depth + 1, parent = self )
 				
 				# Recursively train this child node
-				self.children[ response ].fit( self.all_words, split, min_leaf_size, max_depth, fmt_str, verbose )
+				self.children[ response ].fit( split, min_leaf_size, max_depth, fmt_str, verbose )
